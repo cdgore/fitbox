@@ -254,3 +254,25 @@ def calc_loss(X1, w):
         map(
             lambda row: row_loss(w, row[1], row[0]),
             X1)) / float(len(X1))
+
+
+def update_B_t(tup, B_t=None, c=None):
+    if (c == None):
+        c = 0.0
+#     epsilon = 10**-4
+    epsilon = 1.0
+    s_t = tup[0]
+    y_t = tup[1]
+    s_length = s_t.shape[0]
+    if B_t is None:
+        s_t_data = s_t.nonzero()[0]
+        s_t_nnz = s_t.getnnz()
+        B_t = sp.sparse.csc_matrix((np.ones(s_t_nnz)* epsilon, (s_t_data, np.zeros(s_t_nnz))), shape=(s_length, 1))
+    rho = (s_t.T.dot(y_t)[0, 0])**-1
+    left_hand_side = rho * (s_t.multiply(y_t))
+    right_hand_side = rho * (y_t.multiply(s_t))
+    B_tp1 = B_t - B_t.multiply(left_hand_side) \
+        - B_t.multiply(right_hand_side) \
+        + B_t.multiply(right_hand_side).multiply(left_hand_side) \
+        + c * rho * s_t.multiply(s_t)
+    return B_tp1
