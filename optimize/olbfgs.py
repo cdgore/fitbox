@@ -6,8 +6,29 @@ from collections import deque
 from scipy.optimize import rosen, rosen_der
 
 
-def olbfgs_batch(X1, w, l2_r, m, c, lamb_const,
-                 gradient_estimates=None, B_t=None):
+def line_search(a_0=1., b=0.01, tau=0.5):
+    """Backtracking-Armijo"""
+    def backtrack(f, g, w, p):
+        g_w = g(w)
+        a = a_0
+        # l = 0
+        f_w = f(w)
+        f_w_ap = f(w + a * p)
+        # print "f(w) + a * b * g_w.T.dot(p)[0, 0] < f(w + a * p): " + str(f(w) + a * b * g_w.T.dot(p)[0, 0])
+        # print "f(w + a * p) : " + str(f(w + a * p))
+        while f_w + a * b * g_w.T.dot(p)[0, 0] < f_w_ap:
+            a = tau * a
+            # l += 1
+            f_w = f(w)
+            f_w_ap = f(w + a * p)
+            print a
+        return (a, f_w)
+    return backtrack
+
+
+def olbfgs_batch(X1, w, obj_func, obj_func_grad, m, c, lamb_const,
+                       gradient_estimates=None, B_t=None,
+                       grad_norm2_threshold=10**-5, max_iter=1000, min_iter=0.):
     """Run online lbfgs over one batch of data"""
     batch_size = len(X1)
     eta_0 = float(batch_size) / (float(batch_size) + 2.)
@@ -15,75 +36,8 @@ def olbfgs_batch(X1, w, l2_r, m, c, lamb_const,
     def get_tau(tau_p=None):
         if tau_p is None:
             tau_p = 0.
-        return float(1 * 10**2) * (2.**int(tau_pow))
+        return float(1 * 10**2) * (2.**int(tau_p))
 
-    tau_pow = 0
-    tau = get_tau(tau_pow)
-    if gradient_estimates is None:
-        gradient_estimates = deque([])
-    # while not converging
-    grad_norm2 = float('inf')
-    losses = []
-    t = 0
-    while (grad_norm2 > 10**-5 and t < 1000):
-        grad = calc_gradient(X1, w, l2_r)
-        print 'Iteration ' + str(t)
-        p_t = -grad
-
-        # Update direction with low-rank estimate of Hessian
-        if len(gradient_estimates) > 0:
-            p_t = lbfgs_direction_update(list(gradient_estimates), grad, t)
-
-        cur_loss = float('inf')
-        last_loss = 0.
-        if (t > 0):
-            last_loss = losses[-1]
-        stochastic_line_search_count = 0
-        while (cur_loss > last_loss):
-            if (stochastic_line_search_count > 0):
-                tau_pow -= 1
-                print 'Failed to improve objective function, cutting Tau in half'
-            tau = get_tau(tau_pow)
-            eta_t = (tau / (tau + float(t))) * eta_0
-            s_t = (eta_t / c) * p_t # change in parameters
-            w_tp1 = w + s_t
-            cur_loss = calc_loss(X1, w_tp1)
-            if (t == 0):
-                last_loss = cur_loss
-            stochastic_line_search_count += 1
-        
-        tau = get_tau(tau_pow)
-        eta_t = (tau / (tau + float(t))) * eta_0
-        s_t = (eta_t / c) * p_t # change in parameters
-        w_tp1 = w + s_t
-            
-        grad_tp1 = calc_gradient(X1, w_tp1, l2_r)
-        y_t = grad_tp1 - grad + lamb_const * s_t # change in gradients
-        gradient_estimates.append((s_t, y_t))
-        while len(gradient_estimates) > m:
-            gradient_estimates.popleft()
-        w = w_tp1
-        B_t = update_B_t((s_t, y_t), B_t=B_t, c=(c / eta_t))
-        t += 1
-#         cur_loss = calc_loss(X1, w)
-        losses.append(cur_loss)
-        print 'Losses: ' + str(losses)
-        grad_norm2 = grad.T.dot(grad)[0, 0]
-        print 'Norm-2(gradient(loss_func)): ' + str(grad_norm2)
-    return (w, gradient_estimates, losses, B_t)
-
-
-def olbfgs_batch_rosen(X1, w, l2_r, m, c, lamb_const,
-                       gradient_estimates=None, B_t=None):
-    """Run online lbfgs over one batch of data"""
-    batch_size = len(X1)
-    eta_0 = float(batch_size) / (float(batch_size) + 2.)
-    
-    def get_tau(tau_p=None):
-        if tau_p is None:
-            tau_p = 0.
-        return float(1 * 10**2) * (2.**int(tau_pow))
-    
     tau_pow = 0
     tau_counter = 0
     tau = get_tau(tau_pow)
@@ -93,9 +47,9 @@ def olbfgs_batch_rosen(X1, w, l2_r, m, c, lamb_const,
     grad_norm2 = float('inf')
     losses = []
     t = 0
-    while (grad_norm2 > 10**-5 and t < 800):
-        grad = calc_gradient_rosen(X1, w, l2_r)
-#         print 'Iteration ' + str(t)
+    while (grad_norm2 > grad_norm2_threshold and t < max_iter) or t < min_iter:
+        grad = obj_func_grad(w)
+        print 'Iteration ' + str(t)
         p_t = -grad
 
         # Update direction with low-rank estimate of Hessian
@@ -104,49 +58,42 @@ def olbfgs_batch_rosen(X1, w, l2_r, m, c, lamb_const,
 
         cur_loss = float('inf')
         last_loss = 0.
-        if (t > 0):
-            last_loss = losses[-1]
         stochastic_line_search_count = 0
-        t2 = 0
-        # last_loss = loss(w, x)
-        while (cur_loss > last_loss and t2 < 30):
-            if (stochastic_line_search_count > 0):
-                tau_pow -= 1
-                tau_counter = 0
-                print 'Failed to improve objective function, cutting Tau in half'
-#             else:
-#                 tau_pow = 0
-            tau = get_tau(tau_pow)
-            eta_t = (tau / (tau + float(t))) * eta_0
-            s_t = (eta_t / c) * p_t # change in parameters
-#             print s_t
-            w_tp1 = w.copy() + s_t
-#             print w.T.toarray()[0]
-#             print w_tp1.T.toarray()[0]
-            cur_loss = rosen(w_tp1.T.toarray()[0])
-#             print 'cur_loss: ' + str(cur_loss)
-#             print 'last_loss: ' + str(last_loss)
-            if (t == 0):
-                last_loss = cur_loss
-            stochastic_line_search_count += 1
-            t2 += 1
-        
+        eta_t = 1.
+        if t == 0:
+            eta_t, cur_loss = line_search(a_0=120., b=0.1, tau=0.75)(obj_func, obj_func_grad, w, p_t)
+        else:
+            last_loss = losses[-1]
+            while (cur_loss > last_loss):
+                if (stochastic_line_search_count > 0):
+                    tau_pow -= 1
+                    tau_counter = 0
+                    print 'Failed to improve objective function, cutting Tau in half'
+
+                tau = get_tau(tau_pow)
+                eta_t = (tau / (tau + float(t + 1))) * eta_0
+                s_t = (eta_t / c) * p_t  # change in parameters
+                w_tp1 = w.copy() + s_t
+                cur_loss = obj_func(w_tp1)
+                print 'cur_loss: ' + str(cur_loss)
+                print 'last_loss: ' + str(last_loss)
+                stochastic_line_search_count += 1
+
         tau = get_tau(tau_pow)
-        eta_t = (tau / (tau + float(t))) * eta_0
-        if(t == 0):
-            eta_t = 10**-8
-        s_t = (eta_t / c) * p_t # change in parameters
+        if t > 0:
+            eta_t = (tau / (tau + float(t + 1))) * eta_0
+        s_t = (eta_t / c) * p_t  # change in parameters
         w_tp1 = w + s_t
-        
+
         # Keep track of how long it's been since an adjustment to tau
         if tau_counter >= m and tau_pow < 0:
             tau_pow += 1
             tau_counter = 0
             print 'Increasing tau power'
         tau_counter += 1
-            
-        grad_tp1 = calc_gradient_rosen(X1, w_tp1, l2_r)
-        y_t = grad_tp1 - grad + lamb_const * s_t # change in gradients
+
+        grad_tp1 = obj_func_grad(w_tp1)
+        y_t = grad_tp1 - grad + lamb_const * s_t  # change in gradients
         gradient_estimates.append((s_t, y_t))
         while len(gradient_estimates) > m:
             gradient_estimates.popleft()
@@ -156,9 +103,9 @@ def olbfgs_batch_rosen(X1, w, l2_r, m, c, lamb_const,
         t += 1
 #         cur_loss = calc_loss(X1, w)
         losses.append(cur_loss)
-#         print 'Losses: ' + str(losses)
+        # print 'Losses: ' + str(losses)
         grad_norm2 = grad.T.dot(grad)[0, 0]
-#         print 'Norm-2(gradient(loss_func)): ' + str(grad_norm2)
+        print 'Norm-2(gradient(loss_func)): ' + str(grad_norm2)
     return (w, gradient_estimates, losses, B_t)
 
 
@@ -200,11 +147,18 @@ def lbfgs_direction_update(s_y_list, grad, t):
             zip(a_minus_b, s_list)))
 
 
-def row_gradient(w, x, y):
+def lr_row_gradient(w, x, y):
     f = w.T.dot(x)[0, 0]
     f_clipped = max(-20., min(20., f))
     y_scaled = 2. * y - 1.  # Target scaled to {-1, 1} for logistic loss
     return y_scaled * x * (logistic_function(y_scaled * f_clipped) - 1.)
+
+
+def lr_row_loss(w, x, y):
+    f = w.T.dot(x)[0, 0]
+    f_clipped = max(-20., min(20., f))
+    y_scaled = 2. * y - 1.  # Target scaled to {-1, 1} for logistic loss
+    return -np.log(logistic_function(y_scaled * f_clipped))
 
 
 def logistic_function(t):
@@ -220,24 +174,79 @@ def lr_predict(w, x):
     return 1. / (1. + math.exp(-wTx))
 
 
-def calc_gradient(X1, w, l2_r):
-    w_reg = w.copy()  # only add regularization penalty on non-intercept weights
-    w_reg[0, 0] = 0.0
-    result1 = reduce(
-        lambda x, y: x + y,
-        map(
-            lambda row: row_gradient(w, row[1], row[0]),
-            X1
-        )
-    ) / float(len(X1))
-#     print result1
-#     print w_reg
-    result2 = result1 + l2_r * w_reg
-#     print result2
-    return result2
+def make_mr_obj_func(X, row_obj_func, reg_modifier=None):
+    if reg_modifier is None:
+        reg_modifier = lambda a, b: a
+
+    def mr_obj_func(w):
+        obj_func_result = reduce(
+            lambda a, b: a + b,
+            map(
+                lambda row: row_obj_func(w, row[1], row[0]),
+                X)) / float(len(X))
+        return reg_modifier(obj_func_result, w)
+    return mr_obj_func
+
+
+def make_mr_gradient(X1, row_gradient, reg_modifier=None):
+    if reg_modifier is None:
+        reg_modifier = lambda a, b: a
+
+    def partial_mr_gradient(w):
+        grad = reduce(
+            lambda x, y: x + y,
+            map(
+                lambda row: row_gradient(w, row[1], row[0]),
+                X1
+            )
+        ) / float(len(X1))
+        return reg_modifier(grad, w)
+    return partial_mr_gradient
+
+
+def make_l2_reg(l2_r=None, intercept_index=0):
+    if l2_r is None:
+        l2_r = 0.01
+
+    def partial_reg(loss_func, w):
+        w_reg = w.copy()  # only add regularization penalty on non-intercept weights
+        if intercept_index is not None:
+            w_reg[intercept_index, 0] = 0.0
+        return loss_func + l2_r * np.sqrt(w_reg.T.dot(w_reg))[0, 0]
+    return partial_reg
+
+
+def make_l2_reg_gradient(l2_r=None, intercept_index=0):
+    if l2_r is None:
+        l2_r = 0.01
+
+    def partial_reg(grad, w):
+        w_reg = w.copy()  # only add regularization penalty on non-intercept weights
+        if intercept_index is not None:
+            w_reg[intercept_index, 0] = 0.0
+        return grad + l2_r * w_reg
+    return partial_reg
+
+
+def make_lr_l2_obj_func(X, l2_r=None):
+    l2_reg = make_l2_reg(l2_r)
+    return make_mr_gradient(X, lr_row_loss, l2_reg)
+
+
+def make_lr_l2_gradient(X, l2_r=None):
+    l2_reg = make_l2_reg_gradient(l2_r)
+    return make_mr_gradient(X, lr_row_gradient, l2_reg)
 
 
 def calc_gradient_rosen(X1, w, l2_r):
+    return sp.sparse.csc_matrix(rosen_der(w.T.toarray()[0])).T
+
+
+def rosen_obj_func(w):
+    return rosen(w.T.toarray()[0])
+
+
+def rosen_obj_func_grad(w):
     return sp.sparse.csc_matrix(rosen_der(w.T.toarray()[0])).T
 
 
@@ -257,7 +266,7 @@ def calc_loss(X1, w):
 
 
 def update_B_t(tup, B_t=None, c=None):
-    if (c == None):
+    if c is None:
         c = 0.0
 #     epsilon = 10**-4
     epsilon = 1.0
@@ -267,7 +276,7 @@ def update_B_t(tup, B_t=None, c=None):
     if B_t is None:
         s_t_data = s_t.nonzero()[0]
         s_t_nnz = s_t.getnnz()
-        B_t = sp.sparse.csc_matrix((np.ones(s_t_nnz)* epsilon, (s_t_data, np.zeros(s_t_nnz))), shape=(s_length, 1))
+        B_t = sp.sparse.csc_matrix((np.ones(s_t_nnz) * epsilon, (s_t_data, np.zeros(s_t_nnz))), shape=(s_length, 1))
     rho = (s_t.T.dot(y_t)[0, 0])**-1
     left_hand_side = rho * (s_t.multiply(y_t))
     right_hand_side = rho * (y_t.multiply(s_t))
@@ -276,3 +285,79 @@ def update_B_t(tup, B_t=None, c=None):
         + B_t.multiply(right_hand_side).multiply(left_hand_side) \
         + c * rho * s_t.multiply(s_t)
     return B_tp1
+
+
+# def olbfgs_batch(X1, w, l2_r, m, c, lamb_const,
+#                  gradient_estimates=None, B_t=None):
+#     """Run online lbfgs over one batch of data"""
+#     batch_size = len(X1)
+#     eta_0 = float(batch_size) / (float(batch_size) + 2.)
+
+#     def get_tau(tau_p=None):
+#         if tau_p is None:
+#             tau_p = 0.
+#         return float(1 * 10**2) * (2.**int(tau_pow))
+
+#     tau_pow = 0
+#     tau_counter = 0
+#     tau = get_tau(tau_pow)
+#     if gradient_estimates is None:
+#         gradient_estimates = deque([])
+#     # while not converging
+#     grad_norm2 = float('inf')
+#     losses = []
+#     t = 0
+#     while (grad_norm2 > 10**-5 and t < 1000):
+#         grad = calc_gradient(X1, w, l2_r)
+#         print 'Iteration ' + str(t)
+#         p_t = -grad
+
+#         # Update direction with low-rank estimate of Hessian
+#         if len(gradient_estimates) > 0:
+#             p_t = lbfgs_direction_update(list(gradient_estimates), grad, t)
+
+#         cur_loss = float('inf')
+#         last_loss = 0.
+#         if (t > 0):
+#             last_loss = losses[-1]
+#         stochastic_line_search_count = 0
+#         while (cur_loss > last_loss):
+#             if (stochastic_line_search_count > 0):
+#                 tau_pow -= 1
+#                 tau_counter = 0
+#                 print 'Failed to improve objective function, cutting Tau in half'
+#             tau = get_tau(tau_pow)
+#             eta_t = (tau / (tau + float(t))) * eta_0
+#             s_t = (eta_t / c) * p_t # change in parameters
+#             w_tp1 = w + s_t
+#             cur_loss = calc_loss(X1, w_tp1)
+#             if (t == 0):
+#                 last_loss = cur_loss
+#             stochastic_line_search_count += 1
+
+#         tau = get_tau(tau_pow)
+#         eta_t = (tau / (tau + float(t))) * eta_0
+#         s_t = (eta_t / c) * p_t # change in parameters
+#         w_tp1 = w + s_t
+
+#         # Keep track of how long it's been since an adjustment to tau
+#         if tau_counter >= m and tau_pow < 0:
+#             tau_pow += 1
+#             tau_counter = 0
+#             print 'Increasing tau power'
+#         tau_counter += 1
+
+#         grad_tp1 = calc_gradient(X1, w_tp1, l2_r)
+#         y_t = grad_tp1 - grad + lamb_const * s_t # change in gradients
+#         gradient_estimates.append((s_t, y_t))
+#         while len(gradient_estimates) > m:
+#             gradient_estimates.popleft()
+#         w = w_tp1
+#         B_t = update_B_t((s_t, y_t), B_t=B_t, c=(c / eta_t))
+#         t += 1
+# #         cur_loss = calc_loss(X1, w)
+#         losses.append(cur_loss)
+#         print 'Losses: ' + str(losses)
+#         grad_norm2 = grad.T.dot(grad)[0, 0]
+#         print 'Norm-2(gradient(loss_func)): ' + str(grad_norm2)
+#     return (w, gradient_estimates, losses, B_t)
