@@ -10,6 +10,8 @@ import datetime
 # from collections import deque
 # import pickle
 
+k = 18
+
 
 def hash_factory(key):
     k = 18
