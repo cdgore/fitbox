@@ -111,4 +111,3 @@ def map_feature_hash_to_names(samples, feat_hash):
             print('%s\tencountered: %d' % (
                 datetime.datetime.now(), t))
     return feat_hash
-
