@@ -1,6 +1,6 @@
 import numpy as np
 import scipy as sp
-import scipy.sparse
+import scipy.sparse as sparse
 import math
 from collections import deque
 from scipy.optimize import rosen, rosen_der
@@ -26,11 +26,11 @@ def line_search(a_0=1., b=0.01, tau=0.5):
     return backtrack
 
 
-def olbfgs_batch(X1, w, obj_func, obj_func_grad, m, c, lamb_const,
-                       gradient_estimates=None, B_t=None,
-                       grad_norm2_threshold=10**-5, max_iter=1000, min_iter=0.):
+def olbfgs_batch(w, obj_func, obj_func_grad, m, c, lamb_const,
+                 batch_size=10000, gradient_estimates=None, B_t=None,
+                 grad_norm2_threshold=10**-5, max_iter=1000, min_iter=0.):
     """Run online lbfgs over one batch of data"""
-    batch_size = len(X1)
+    # batch_size = len(X1)
     eta_0 = float(batch_size) / (float(batch_size) + 2.)
 
     def get_tau(tau_p=None):
@@ -258,7 +258,7 @@ def make_l2_reg_gradient(l2_r=None, intercept_index=0):
 
 def make_lr_l2_obj_func(X, l2_r=None):
     l2_reg = make_l2_reg(l2_r)
-    return make_mr_gradient(X, lr_row_loss, l2_reg)
+    return make_mr_obj_func(X, lr_row_loss, l2_reg)
 
 
 def make_lr_l2_gradient(X, l2_r=None):
@@ -266,8 +266,18 @@ def make_lr_l2_gradient(X, l2_r=None):
     return make_mr_gradient(X, lr_row_gradient, l2_reg)
 
 
-def calc_gradient_rosen(X1, w, l2_r):
-    return sp.sparse.csc_matrix(rosen_der(w.T.toarray()[0])).T
+def make_spark_lr_l2_obj_func(X, l2_r=None):
+    l2_reg = make_l2_reg(l2_r)
+    return make_spark_mr_obj_func(X, lr_row_loss, l2_reg)
+
+
+def make_spark_lr_l2_gradient(X, l2_r=None):
+    l2_reg = make_l2_reg_gradient(l2_r)
+    return make_spark_mr_gradient(X, lr_row_gradient, l2_reg)
+
+
+# def calc_gradient_rosen(X1, w, l2_r):
+#     return sparse.csc_matrix(rosen_der(w.T.toarray()[0])).T
 
 
 def rosen_obj_func(w):
@@ -275,7 +285,7 @@ def rosen_obj_func(w):
 
 
 def rosen_obj_func_grad(w):
-    return sp.sparse.csc_matrix(rosen_der(w.T.toarray()[0])).T
+    return sparse.csc_matrix(rosen_der(w.T.toarray()[0])).T
 
 
 def row_loss(w, x, y):
@@ -304,7 +314,7 @@ def update_B_t(tup, B_t=None, c=None):
     if B_t is None:
         s_t_data = s_t.nonzero()[0]
         s_t_nnz = s_t.getnnz()
-        B_t = sp.sparse.csc_matrix((np.ones(s_t_nnz) * epsilon, (s_t_data, np.zeros(s_t_nnz))), shape=(s_length, 1))
+        B_t = sparse.csc_matrix((np.ones(s_t_nnz) * epsilon, (s_t_data, np.zeros(s_t_nnz))), shape=(s_length, 1))
     rho = (s_t.T.dot(y_t)[0, 0])**-1
     left_hand_side = rho * (s_t.multiply(y_t))
     right_hand_side = rho * (y_t.multiply(s_t))
