@@ -1,4 +1,5 @@
 import numpy as np
+# from numpy import sqrt
 import scipy as sp
 import scipy.sparse as sparse
 import math
@@ -204,32 +205,49 @@ def make_mr_gradient(X1, row_gradient, reg_modifier=None):
     return partial_mr_gradient
 
 
-def make_spark_mr_obj_func(X, row_obj_func, reg_modifier=None):
+# def make_spark_mr_obj_func(X, row_obj_func, reg_modifier=None):
+#     if reg_modifier is None:
+#         reg_modifier = lambda a, b: a
+#     X_len = X.count()
+
+#     def mr_obj_func(w):
+#         obj_func_result = X.map(
+#             lambda row: row_obj_func(w, row[1], row[0]),
+#             preservesPartitioning=True
+#         ).fold(
+#             0.,
+#             lambda a, b: a + b
+#         ) / float(X_len)
+#         return reg_modifier(obj_func_result, w)
+#     return mr_obj_func
+
+
+def make_spark_mr_function(X, row_function, zero_val_func, reg_modifier=None):
     if reg_modifier is None:
         reg_modifier = lambda a, b: a
+    X_len = X.count()
 
-    def mr_obj_func(w):
-        obj_func_result = X.map(
-            lambda row: row_obj_func(w, row[1], row[0])
-        ).reduce(
+    def mr_function(w):
+        zero_value = zero_val_func(w)
+        function_result = X.map(
+            lambda row: row_function(w, row[1], row[0]),
+            preservesPartitioning=True
+        ).fold(
+            zero_value,
             lambda a, b: a + b
-        ) / float(X.count())
-        return reg_modifier(obj_func_result, w)
-    return mr_obj_func
+        ) / float(X_len)
+        return reg_modifier(function_result, w)
+    return mr_function
 
 
-def make_spark_mr_gradient(X1, row_gradient, reg_modifier=None):
-    if reg_modifier is None:
-        reg_modifier = lambda a, b: a
+def make_spark_mr_obj_func(X, row_obj_func, reg_modifier=None):
+    zero_val_func = lambda w: 0.
+    return make_spark_mr_function(X, row_obj_func, zero_val_func, reg_modifier)
 
-    def partial_mr_gradient(w):
-        grad = X1.map(
-            lambda row: row_gradient(w, row[1], row[0])
-        ).reduce(
-            lambda x, y: x + y
-        ) / float(X1.count())
-        return reg_modifier(grad, w)
-    return partial_mr_gradient
+
+def make_spark_mr_gradient(X, row_gradient, reg_modifier=None):
+    zero_val_func = lambda w: sparse.csc_matrix(w.shape, dtype=np.float)
+    return make_spark_mr_function(X, row_gradient, zero_val_func, reg_modifier)
 
 
 def make_l2_reg(l2_r=None, intercept_index=0):
@@ -240,7 +258,7 @@ def make_l2_reg(l2_r=None, intercept_index=0):
         w_reg = w.copy()  # only add regularization penalty on non-intercept weights
         if intercept_index is not None:
             w_reg[intercept_index, 0] = 0.0
-        return loss_func + l2_r * np.sqrt(w_reg.T.dot(w_reg))[0, 0]
+        return loss_func + l2_r * (w_reg.T.dot(w_reg)[0, 0] ** 0.5)
     return partial_reg
 
 
