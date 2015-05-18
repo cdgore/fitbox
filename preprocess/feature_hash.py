@@ -1,6 +1,6 @@
 import numpy as np
 import scipy as sp
-import scipy.sparse
+import scipy.sparse as sparse
 # import pandas as pd
 import itertools
 import mmh3
@@ -79,9 +79,9 @@ def get_features_sparse(row):
     num_features = sparse_features_rows.size
     sparse_features_cols = np.zeros(num_features)
     sparse_features_data = np.ones(num_features)
-    return sp.sparse.csc_matrix((sparse_features_data, (sparse_features_rows, sparse_features_cols)),
-                                dtype=np.int8,
-                                shape=(1 << k, 1))
+    return sparse.csc_matrix((sparse_features_data, (sparse_features_rows, sparse_features_cols)),
+                             dtype=np.int8,
+                             shape=(1 << k, 1))
 
 
 def update_feature_hash_mapping(row, feat_map):

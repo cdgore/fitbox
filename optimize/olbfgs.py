@@ -1,6 +1,7 @@
 import numpy as np
+# from numpy import sqrt
 import scipy as sp
-import scipy.sparse
+import scipy.sparse as sparse
 import math
 from collections import deque
 from scipy.optimize import rosen, rosen_der
@@ -26,11 +27,11 @@ def line_search(a_0=1., b=0.01, tau=0.5):
     return backtrack
 
 
-def olbfgs_batch(X1, w, obj_func, obj_func_grad, m, c, lamb_const,
-                       gradient_estimates=None, B_t=None,
-                       grad_norm2_threshold=10**-5, max_iter=1000, min_iter=0.):
+def olbfgs_batch(w, obj_func, obj_func_grad, m, c, lamb_const,
+                 batch_size=10000, gradient_estimates=None, B_t=None,
+                 grad_norm2_threshold=10**-5, max_iter=1000, min_iter=0.):
     """Run online lbfgs over one batch of data"""
-    batch_size = len(X1)
+    # batch_size = len(X1)
     eta_0 = float(batch_size) / (float(batch_size) + 2.)
 
     def get_tau(tau_p=None):
@@ -204,6 +205,34 @@ def make_mr_gradient(X1, row_gradient, reg_modifier=None):
     return partial_mr_gradient
 
 
+def make_spark_mr_function(X, row_function, zero_val_func, reg_modifier=None):
+    if reg_modifier is None:
+        reg_modifier = lambda a, b: a
+    X_len = X.count()
+
+    def mr_function(w):
+        zero_value = zero_val_func(w)
+        function_result = X.map(
+            lambda row: row_function(w, row[1], row[0]),
+            preservesPartitioning=True
+        ).fold(
+            zero_value,
+            lambda a, b: a + b
+        ) / float(X_len)
+        return reg_modifier(function_result, w)
+    return mr_function
+
+
+def make_spark_mr_obj_func(X, row_obj_func, reg_modifier=None):
+    zero_val_func = lambda w: 0.
+    return make_spark_mr_function(X, row_obj_func, zero_val_func, reg_modifier)
+
+
+def make_spark_mr_gradient(X, row_gradient, reg_modifier=None):
+    zero_val_func = lambda w: sparse.csc_matrix(w.shape, dtype=np.float)
+    return make_spark_mr_function(X, row_gradient, zero_val_func, reg_modifier)
+
+
 def make_l2_reg(l2_r=None, intercept_index=0):
     if l2_r is None:
         l2_r = 0.01
@@ -212,7 +241,7 @@ def make_l2_reg(l2_r=None, intercept_index=0):
         w_reg = w.copy()  # only add regularization penalty on non-intercept weights
         if intercept_index is not None:
             w_reg[intercept_index, 0] = 0.0
-        return loss_func + l2_r * np.sqrt(w_reg.T.dot(w_reg))[0, 0]
+        return loss_func + l2_r * (w_reg.T.dot(w_reg)[0, 0] ** 0.5)
     return partial_reg
 
 
@@ -230,7 +259,7 @@ def make_l2_reg_gradient(l2_r=None, intercept_index=0):
 
 def make_lr_l2_obj_func(X, l2_r=None):
     l2_reg = make_l2_reg(l2_r)
-    return make_mr_gradient(X, lr_row_loss, l2_reg)
+    return make_mr_obj_func(X, lr_row_loss, l2_reg)
 
 
 def make_lr_l2_gradient(X, l2_r=None):
@@ -238,8 +267,18 @@ def make_lr_l2_gradient(X, l2_r=None):
     return make_mr_gradient(X, lr_row_gradient, l2_reg)
 
 
-def calc_gradient_rosen(X1, w, l2_r):
-    return sp.sparse.csc_matrix(rosen_der(w.T.toarray()[0])).T
+def make_spark_lr_l2_obj_func(X, l2_r=None):
+    l2_reg = make_l2_reg(l2_r)
+    return make_spark_mr_obj_func(X, lr_row_loss, l2_reg)
+
+
+def make_spark_lr_l2_gradient(X, l2_r=None):
+    l2_reg = make_l2_reg_gradient(l2_r)
+    return make_spark_mr_gradient(X, lr_row_gradient, l2_reg)
+
+
+# def calc_gradient_rosen(X1, w, l2_r):
+#     return sparse.csc_matrix(rosen_der(w.T.toarray()[0])).T
 
 
 def rosen_obj_func(w):
@@ -247,7 +286,7 @@ def rosen_obj_func(w):
 
 
 def rosen_obj_func_grad(w):
-    return sp.sparse.csc_matrix(rosen_der(w.T.toarray()[0])).T
+    return sparse.csc_matrix(rosen_der(w.T.toarray()[0])).T
 
 
 def row_loss(w, x, y):
@@ -276,7 +315,7 @@ def update_B_t(tup, B_t=None, c=None):
     if B_t is None:
         s_t_data = s_t.nonzero()[0]
         s_t_nnz = s_t.getnnz()
-        B_t = sp.sparse.csc_matrix((np.ones(s_t_nnz) * epsilon, (s_t_data, np.zeros(s_t_nnz))), shape=(s_length, 1))
+        B_t = sparse.csc_matrix((np.ones(s_t_nnz) * epsilon, (s_t_data, np.zeros(s_t_nnz))), shape=(s_length, 1))
     rho = (s_t.T.dot(y_t)[0, 0])**-1
     left_hand_side = rho * (s_t.multiply(y_t))
     right_hand_side = rho * (y_t.multiply(s_t))
