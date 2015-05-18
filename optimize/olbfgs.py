@@ -205,23 +205,6 @@ def make_mr_gradient(X1, row_gradient, reg_modifier=None):
     return partial_mr_gradient
 
 
-# def make_spark_mr_obj_func(X, row_obj_func, reg_modifier=None):
-#     if reg_modifier is None:
-#         reg_modifier = lambda a, b: a
-#     X_len = X.count()
-
-#     def mr_obj_func(w):
-#         obj_func_result = X.map(
-#             lambda row: row_obj_func(w, row[1], row[0]),
-#             preservesPartitioning=True
-#         ).fold(
-#             0.,
-#             lambda a, b: a + b
-#         ) / float(X_len)
-#         return reg_modifier(obj_func_result, w)
-#     return mr_obj_func
-
-
 def make_spark_mr_function(X, row_function, zero_val_func, reg_modifier=None):
     if reg_modifier is None:
         reg_modifier = lambda a, b: a
