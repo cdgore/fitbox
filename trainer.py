@@ -65,8 +65,10 @@ def set_first_intercept(w, X1):
 
 def set_first_intercept_spark(w, X1):
     ctr_counts = X1.map(
-        lambda x: (x[0], 1)
-    ).reduce(
+        lambda x: (x[0], 1),
+        preservesPartitioning=True
+    ).fold(
+        (0, 0),
         lambda a, b: (a[0] + b[0], a[1] + b[1])
     )
     ctr_ratio = float(ctr_counts[0]) / float(ctr_counts[1]) + 10**-6
