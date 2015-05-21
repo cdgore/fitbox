@@ -111,3 +111,21 @@ def map_feature_hash_to_names(samples, feat_hash):
             print('%s\tencountered: %d' % (
                 datetime.datetime.now(), t))
     return feat_hash
+
+
+def map_feature_hash_to_names_spark(samples, feat_hash={}):
+    def seq_op(feat_hash, row):
+        features = dict(filter(lambda x: x[0] != label, row.items()))
+        feat_hash.update(update_feature_hash_mapping(features, feat_hash))
+        return feat_hash
+
+    def comb_op(feat_hash1, feat_hash2):
+        for i in feat_hash2.items():
+            feat_hash1.update({i})
+        return feat_hash1
+
+    return samples.aggregate(
+        feat_hash,
+        seq_op,
+        comb_op
+    )
