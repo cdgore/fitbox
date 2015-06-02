@@ -148,6 +148,13 @@ def lbfgs_direction_update(s_y_list, grad, t):
             zip(a_minus_b, s_list)))
 
 
+def lr_row_loss(w, x, y):
+    f = w.T.dot(x)[0, 0]
+    f_clipped = max(-20., min(20., f))
+    y_scaled = 2. * y - 1.  # Target scaled to {-1, 1} for logistic loss
+    return -np.log(logistic_function(y_scaled * f_clipped))
+
+
 def lr_row_gradient(w, x, y):
     f = w.T.dot(x)[0, 0]
     f_clipped = max(-20., min(20., f))
@@ -155,11 +162,13 @@ def lr_row_gradient(w, x, y):
     return y_scaled * x * (logistic_function(y_scaled * f_clipped) - 1.)
 
 
-def lr_row_loss(w, x, y):
+def lr_row_hess_diag(w, x, y):
     f = w.T.dot(x)[0, 0]
     f_clipped = max(-20., min(20., f))
     y_scaled = 2. * y - 1.  # Target scaled to {-1, 1} for logistic loss
-    return -np.log(logistic_function(y_scaled * f_clipped))
+    phi_y_w_T_x = logistic_function(y_scaled * f_clipped)
+    D_i = phi_y_w_T_x(1. - phi_y_w_T_x)
+    return x.multiply(D_i).multiply(x)
 
 
 def logistic_function(t):
@@ -257,6 +266,26 @@ def make_l2_reg_gradient(l2_r=None, intercept_index=0):
     return partial_reg
 
 
+def make_l2_reg_hessian_diag(l2_r=None, intercept_index=0):
+    if l2_r is None:
+        l2_r = 0.01
+
+    def partial_reg(hess, w):
+        w_reg = w.copy()  # only add regularization penalty on non-intercept weights
+        if intercept_index is not None:
+            w_reg[intercept_index, 0] = 0.0
+        w_reg_data = w_reg.nonzero()[0]
+        w_reg_nnz = w_reg.getnnz()
+        l2_r_I = sparse.csc_matrix(
+            (
+                np.ones(w_reg_nnz) * l2_r,
+                (w_reg_data, np.zeros(w_reg_nnz))
+            ),
+            shape=w_reg.shape)
+        return hess + l2_r_I
+    return partial_reg
+
+
 def make_lr_l2_obj_func(X, l2_r=None):
     l2_reg = make_l2_reg(l2_r)
     return make_mr_obj_func(X, lr_row_loss, l2_reg)
@@ -275,6 +304,11 @@ def make_spark_lr_l2_obj_func(X, l2_r=None):
 def make_spark_lr_l2_gradient(X, l2_r=None):
     l2_reg = make_l2_reg_gradient(l2_r)
     return make_spark_mr_gradient(X, lr_row_gradient, l2_reg)
+
+
+def make_spark_lr_l2_hessian_diag(X, l2_r=None):
+    l2_reg = make_l2_reg_hessian_diag(l2_r)
+    return make_spark_mr_gradient(X, lr_row_hess_diag, l2_reg)
 
 
 # def calc_gradient_rosen(X1, w, l2_r):
