@@ -167,8 +167,8 @@ def lr_row_hess_diag(w, x, y):
     f_clipped = max(-20., min(20., f))
     y_scaled = 2. * y - 1.  # Target scaled to {-1, 1} for logistic loss
     phi_y_w_T_x = logistic_function(y_scaled * f_clipped)
-    D_i = phi_y_w_T_x(1. - phi_y_w_T_x)
-    return x.multiply(D_i).multiply(x)
+    D_i = phi_y_w_T_x * (1. - phi_y_w_T_x)
+    return (x * D_i).multiply(x)
 
 
 def logistic_function(t):
@@ -275,13 +275,13 @@ def make_l2_reg_hessian_diag(l2_r=None, intercept_index=0):
         if intercept_index is not None:
             w_reg[intercept_index, 0] = 0.0
         w_reg_data = w_reg.nonzero()[0]
-        w_reg_nnz = w_reg.getnnz()
+        w_reg_nnz = w_reg_data.shape[0]
         l2_r_I = sparse.csc_matrix(
             (
                 np.ones(w_reg_nnz) * l2_r,
                 (w_reg_data, np.zeros(w_reg_nnz))
             ),
-            shape=w_reg.shape)
+            shape=(w_reg.shape[0], 1))
         return hess + l2_r_I
     return partial_reg
 
