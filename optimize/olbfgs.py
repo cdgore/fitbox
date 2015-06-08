@@ -181,7 +181,7 @@ def logistic_function(t):
 def lr_predict(w, x):
     wTx = w.transpose().dot(x)[0, 0]
     # wTx_clipped = max(20., min(-20., wTx))
-    return 1. / (1. + math.exp(-wTx))
+    return logistic_function(wTx)
 
 
 def make_mr_obj_func(X, row_obj_func, reg_modifier=None):
