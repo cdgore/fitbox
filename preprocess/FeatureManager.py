@@ -16,6 +16,10 @@ class FeatureManager(object):
     def parse_row(self, row):
         return sparse.csc_matrix([])
 
+    @abstractmethod
+    def get_w(self):
+        return sparse.csc_matrix([])
+
 
 class HashFeatureManager(FeatureManager):
     def __init__(self):
@@ -50,7 +54,10 @@ class HashFeatureManager(FeatureManager):
             self.quads,
             lambda a, b: str(a) + "_" + str(b))
         self.all_features = self.single_features + self.quad_features
-        self.hash_functions = dict(map(lambda f: (f, self.hash_factory(f)), self.all_features))
+        self.hash_functions = dict(
+            map(
+                lambda f: (f, self.hash_factory(f)),
+                self.all_features))
         return self
 
     def hash_factory(self, key):
@@ -68,7 +75,11 @@ class HashFeatureManager(FeatureManager):
     def quad_product(self, quad, func):
         """ Run a function on the quadratic product of some strings
         inputs:
-        quadratic columns in the form [[[a, b], [c, d, e]], [[a, w], [r, x, y, z]]]
+        quadratic columns in the form
+            [
+                [[a, b], [c, d, e]],
+                [[a, w], [r, x, y, z]]
+            ]
         function (a, b) => c to apply
         """
         return reduce(
@@ -114,6 +125,11 @@ class HashFeatureManager(FeatureManager):
         x = self.get_features_sparse(features)
         results = (y, x)
         return results
+
+    def get_w(self):
+        return sp.sparse.csc_matrix(
+            (1 << self.k, 1),
+            dtype=np.float)
 
     def map_feature_hash_to_names(self, samples, feat_hash={}):
         for t, row in enumerate(samples):
@@ -182,3 +198,8 @@ class NumericFeatureManager(FeatureManager):
                               shape=(self.k + 1, 1))
         results = (y, x)
         return results
+
+    def get_w(self):
+        return sp.sparse.csc_matrix(
+            (self.k + 1, 1),
+            dtype=np.float)
