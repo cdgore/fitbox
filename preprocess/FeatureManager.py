@@ -115,9 +115,9 @@ class HashFeatureManager(FeatureManager):
             self.quads,
             lambda a, b: (str(a) + "_" + str(b), str(row.get(a, '')) + "_" + str(row.get(b, ''))))
         x = map(
-            lambda (k, v): (self.hash_functions.get(k)(v), str(k) + "_" + str(v)),
+            lambda (k, v): (self.hash_functions.get(k, lambda a: None)(v), str(k) + "_" + str(v)),
             quad_transformed_items)
-        return dict([(0, "intercept")] + x)
+        return dict([(0, "intercept")] + filter(lambda y: y is not None, x))
 
     def parse_row(self, row):
         y = float(row.get(self.label, 0.))
