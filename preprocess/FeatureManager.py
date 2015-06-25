@@ -20,6 +20,19 @@ class FeatureManager(object):
     def get_w(self):
         return sparse.csc_matrix([])
 
+    def flatten_list(self, rec, level=None, tail_list=None):
+        if level is None:
+            level = 0
+        if tail_list is None:
+            tail_list = []
+        tail_list.append(str(level))
+        for r in rec:
+            if type(r) == list:
+                tail_list = self.flatten_list(r, level + 1, tail_list)
+            else:
+                tail_list.append(str(r))
+        return tail_list
+
 
 class HashFeatureManager(FeatureManager):
     def __init__(self):
@@ -30,6 +43,26 @@ class HashFeatureManager(FeatureManager):
         self.label = ''
         self.all_features = []
         self.hash_functions = {}
+
+    def __key(self):
+        return reduce(
+            lambda x, y: x + y,
+            self.flatten_list([
+                self.k,
+                self.single_features,
+                self.quad_features,
+                self.quads,
+                self.label,
+                self.all_features
+
+            ])
+        )
+
+    def __eq__(x, y):
+        return x.__key() == y.__key()
+
+    def __hash__(self):
+        return mmh3.hash(self.__key(), 5)
 
     def set_k(self, new_k):
         self.k = new_k
