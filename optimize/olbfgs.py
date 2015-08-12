@@ -5,7 +5,7 @@ import scipy.sparse as sparse
 import math
 from collections import deque
 from scipy.optimize import rosen, rosen_der
-
+import datetime
 
 def line_search(a_0=1., b=0.01, tau=0.5):
     """Backtracking-Armijo"""
@@ -30,7 +30,7 @@ def line_search(a_0=1., b=0.01, tau=0.5):
 def olbfgs_batch(w, obj_func, obj_func_grad, m, c, lamb_const,
                  batch_size=10000, gradient_estimates=None, B_t=None,
                  grad_norm2_threshold=10**-5, max_iter=1000, min_iter=0.):
-    """Run online lbfgs over one batch of data"""
+    print "Run online lbfgs over one batch of data"
     # batch_size = len(X1)
     eta_0 = float(batch_size) / (float(batch_size) + 2.)
 
@@ -48,9 +48,16 @@ def olbfgs_batch(w, obj_func, obj_func_grad, m, c, lamb_const,
     grad_norm2 = float('inf')
     losses = []
     t = 0
+    starttime = datetime.datetime.now()
+    grad = obj_func_grad(w)
+    endtime = datetime.datetime.now()
+    print 'Time for compute grad = %s ' %(( endtime - starttime ) )
+    pre_grad = grad
+
     while (grad_norm2 > grad_norm2_threshold and t < max_iter) or t < min_iter:
-        grad = obj_func_grad(w)
-        print 'Iteration ' + str(t)
+        starttime = datetime.datetime.now()
+        print 'Iteration %s,starttime= %s' % (t,starttime)
+        grad = pre_grad
         p_t = -grad
 
         # Update direction with low-rank estimate of Hessian
@@ -62,7 +69,7 @@ def olbfgs_batch(w, obj_func, obj_func_grad, m, c, lamb_const,
         stochastic_line_search_count = 0
         eta_t = 1.
         if t == 0:
-            eta_t, cur_loss = line_search(a_0=120., b=0.1, tau=0.75)(obj_func, obj_func_grad, w, p_t)
+            eta_t, cur_loss = line_search(a_0=20., b=0.1, tau=0.75)(obj_func, obj_func_grad, w, p_t)
         else:
             last_loss = losses[-1]
             while (cur_loss > last_loss):
@@ -94,6 +101,8 @@ def olbfgs_batch(w, obj_func, obj_func_grad, m, c, lamb_const,
         tau_counter += 1
 
         grad_tp1 = obj_func_grad(w_tp1)
+        pre_grad = grad_tp1
+
         y_t = grad_tp1 - grad + lamb_const * s_t  # change in gradients
         gradient_estimates.append((s_t, y_t))
         while len(gradient_estimates) > m:
@@ -107,6 +116,10 @@ def olbfgs_batch(w, obj_func, obj_func_grad, m, c, lamb_const,
         # print 'Losses: ' + str(losses)
         grad_norm2 = grad.T.dot(grad)[0, 0]
         print 'Norm-2(gradient(loss_func)): ' + str(grad_norm2)
+        endtime = datetime.datetime.now()
+        # print 'Iteration [%s],endtime= %s' % (t,endtime)
+        print 'Time for Iteration %s = %s ' %(t,( endtime - starttime ) )
+
     return (w, gradient_estimates, losses, B_t)
 
 
