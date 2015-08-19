@@ -7,6 +7,7 @@ from collections import deque
 from scipy.optimize import rosen, rosen_der
 import datetime
 
+
 def line_search(a_0=1., b=0.01, tau=0.5):
     """Backtracking-Armijo"""
     def backtrack(f, g, w, p):
@@ -20,7 +21,7 @@ def line_search(a_0=1., b=0.01, tau=0.5):
         while f_w + a * b * g_w.T.dot(p)[0, 0] < f_w_ap:
             a = tau * a
             # l += 1
-            f_w = f(w)
+            # f_w = f(w)
             f_w_ap = f(w + a * p)
             print a
         return (a, f_w)
