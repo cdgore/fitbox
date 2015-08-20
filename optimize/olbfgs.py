@@ -30,7 +30,8 @@ def line_search(a_0=1., b=0.01, tau=0.5):
 
 def olbfgs_batch(w, obj_func, obj_func_grad, m, c, lamb_const,
                  batch_size=10000, gradient_estimates=None, B_t=None,
-                 grad_norm2_threshold=10**-5, max_iter=1000, min_iter=0.):
+                 grad_norm2_threshold=10**-5, max_iter=1000, min_iter=0.,
+                 line_search_init=20.):
     print "Run online lbfgs over one batch of data"
     # batch_size = len(X1)
     eta_0 = float(batch_size) / (float(batch_size) + 2.)
@@ -70,7 +71,7 @@ def olbfgs_batch(w, obj_func, obj_func_grad, m, c, lamb_const,
         stochastic_line_search_count = 0
         eta_t = 1.
         if t == 0:
-            eta_t, cur_loss = line_search(a_0=20., b=0.1, tau=0.75)(obj_func, obj_func_grad, w, p_t)
+            eta_t, cur_loss = line_search(a_0=line_search_init, b=0.1, tau=0.75)(obj_func, obj_func_grad, w, p_t)
         else:
             last_loss = losses[-1]
             while (cur_loss > last_loss):
