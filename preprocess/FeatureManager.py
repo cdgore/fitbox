@@ -182,7 +182,7 @@ class HashFeatureManager(FeatureManager):
 
         def comb_op(feat_hash1, feat_hash2):
             for i in feat_hash2.items():
-                feat_hash1.update({i})
+                feat_hash1.update(dict(i))
             return feat_hash1
 
         return samples.aggregate(
