@@ -116,13 +116,13 @@ def olbfgs_batch(w, obj_func, obj_func_grad, m, c, lamb_const,
 #         cur_loss = calc_loss(X1, w)
         losses.append(cur_loss)
         # print 'Losses: ' + str(losses)
-        grad_norm2 = grad.T.dot(grad)[0, 0]
+        grad_norm2 = grad_tp1.T.dot(grad_tp1)[0, 0]
         print 'Norm-2(gradient(loss_func)): ' + str(grad_norm2)
         endtime = datetime.datetime.now()
         # print 'Iteration [%s],endtime= %s' % (t,endtime)
         print 'Time for Iteration %s = %s ' %(t,( endtime - starttime ) )
 
-    return (w, gradient_estimates, losses, B_t)
+    return (w, gradient_estimates, losses, B_t, grad_norm2)
 
 
 def lbfgs_direction_update(s_y_list, grad, t):
