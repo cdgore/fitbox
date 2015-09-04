@@ -53,12 +53,12 @@ def olbfgs_batch(w, obj_func, obj_func_grad, m, c, lamb_const,
     starttime = datetime.datetime.now()
     grad = obj_func_grad(w)
     endtime = datetime.datetime.now()
-    print 'Time for compute grad = %s ' %(( endtime - starttime ) )
+    print 'Time for compute grad = %s ' % (endtime - starttime)
     pre_grad = grad
 
     while (grad_norm2 > grad_norm2_threshold and t < max_iter) or t < min_iter:
         starttime = datetime.datetime.now()
-        print 'Iteration %s,starttime= %s' % (t,starttime)
+        print 'Iteration %s, starttime= %s' % (t + 1, starttime)
         grad = pre_grad
         p_t = -grad
 
