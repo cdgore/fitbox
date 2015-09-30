@@ -7,6 +7,7 @@ from abc import ABCMeta, abstractmethod
 import itertools
 import mmh3
 import datetime
+import simplejson as json
 
 
 class FeatureManager(object):
@@ -133,6 +134,34 @@ class HashFeatureManager(FeatureManager):
             lambda (k, v): self.hash_functions.get(k, lambda a: None)(v),
             quad_transformed_items)
         return np.array([0] + filter(lambda y: y is not None, x))
+
+    def format_readable(self, row):
+        """
+        Prints returns a hashed, readable form of a feature vector in the
+        format:
+
+        {'target': , 'date': }\t{feature_1: , feature_2: }
+        """
+        def print_dict(d):
+            return json.dumps(dict(filter(
+                lambda y: y[1] is not None,
+                d.items())), sort_keys=True)
+
+        quad_transformed_items = row.items() + self.quad_product(
+            self.quads,
+            lambda a, b: (str(a) + "_" + str(b), str(row.get(a, '')) + "_" + str(row.get(b, ''))))
+        x = dict(map(
+            lambda (k, v): (k, self.hash_functions.get(k, lambda a: None)(v)),
+            quad_transformed_items))
+        x.update({
+            'intercept': 0,
+            })
+        left_dict = {
+            'target': int(row.get(self.label, 0)),
+            'date': row.get('date')
+        }
+        return '%s\t%s' % (print_dict(left_dict),
+                           print_dict(x))
 
     def get_features_sparse(self, row):
         sparse_features_rows = self.get_features(row)
