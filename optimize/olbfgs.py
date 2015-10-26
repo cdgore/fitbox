@@ -163,6 +163,38 @@ def lbfgs_direction_update(s_y_list, grad, t):
             zip(a_minus_b, s_list)))
 
 
+def sgd_with_momentum(w, obj_func_grad, eta, rho, max_num_iter=10,
+                      norm_2_grad_threshold=1e-4, previous_param_delta=None):
+    """
+    Stochastically update the parameters of the objective function
+    Runs until threshold of norm_2(gradient) or maximum number of iterations
+    reached
+
+    w: weight vector
+    obj_func_grad: gradient of objective function
+    eta: learning rate
+    rho: momentum constant (set to 0. to turn off momentum updates)
+    max_num_iter: maximum number of iterations
+    norm_2_grad_threshold: minimum threshold for norm2 of the gradient
+    previous_param_delta: previous change in weights, in case 
+    """
+    if previous_param_delta is None:
+        previous_param_delta = sparse.csc_matrix(w.shape, dtype=np.float)
+    norm_2_grad = float('inf')
+    num_iter = 0
+
+    while (num_iter < max_num_iter and norm_2_grad > norm_2_grad_threshold):
+        print "Iteration number: %d" % (num_iter + 1)
+        grad = obj_func_grad(w)
+        param_delta = rho * previous_param_delta - eta * grad
+        w = w + param_delta
+        previous_param_delta = param_delta
+        norm_2_grad = grad.T.dot(grad)[0, 0]
+        print "Norm2(gradient): %f" % (norm_2_grad)
+        num_iter += 1
+    return (w, previous_param_delta)
+
+
 def lr_row_loss(w, x, y):
     f = w.T.dot(x)[0, 0]
     f_clipped = max(-20., min(20., f))
