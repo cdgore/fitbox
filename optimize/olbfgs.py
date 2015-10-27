@@ -176,7 +176,10 @@ def sgd_with_momentum(w, obj_func_grad, eta, rho, max_num_iter=10,
     rho: momentum constant (set to 0. to turn off momentum updates)
     max_num_iter: maximum number of iterations
     norm_2_grad_threshold: minimum threshold for norm2 of the gradient
-    previous_param_delta: previous change in weights, in case 
+    previous_param_delta: previous change in weights
+
+    returns (new parameters, delta of parameters)
+
     """
     if previous_param_delta is None:
         previous_param_delta = sparse.csc_matrix(w.shape, dtype=np.float)
