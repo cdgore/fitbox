@@ -271,6 +271,7 @@ def make_spark_mr_function(X, row_function, zero_val_func, reg_modifier=None):
 
     def mr_function(w):
         zero_value = zero_val_func(w)
+        # X.checkpoint()
         function_result = X.map(
             lambda row: row_function(w, row[1], row[0]),
             preservesPartitioning=True
@@ -359,6 +360,48 @@ def make_spark_lr_l2_gradient(X, l2_r=None):
 def make_spark_lr_l2_hessian_diag(X, l2_r=None):
     l2_reg = make_l2_reg_hessian_diag(l2_r)
     return make_spark_mr_gradient(X, lr_row_hess_diag, l2_reg)
+
+
+# ========================= Batch updates ============================
+# bu: batch update
+# Add regularization to cost function
+# output : func which returns a scalar number
+def make_l2_reg_bu(Q, M, intercept_index=0):
+    def partial_reg(loss_func, w):
+        w_reg = w.copy() - M  # only add regularization penalty on non-intercept weights
+        if intercept_index is not None:
+            w_reg[intercept_index, 0] = 0.0
+        return loss_func + 0.5 * (Q.T.dot(w_reg.multiply(w_reg))[0, 0])
+    return partial_reg
+
+
+def make_l2_reg_gradient_bu(Q, M, intercept_index=0):
+    '''
+    l2 regularized gradient batch update
+    input : csc_matrix, csc_matrix
+    output : func which returns csc_matrix
+    '''
+    def partial_reg(grad, w):
+        w_reg = w.copy() - M  # only add regularization penalty on non-intercept weights
+        if intercept_index is not None:
+            w_reg[intercept_index, 0] = 0.0
+        return grad + Q.multiply(w_reg)
+    return partial_reg
+
+
+# def make_spark_lr_l2_hessian_diag_bu(X, l2_r=None):
+#     l2_reg = make_l2_reg_hessian_diag(l2_r)
+#     return make_spark_mr_gradient(X, lr_row_hess_diag, l2_reg)
+
+
+def make_spark_lr_l2_obj_func_bu(Q, M, X):
+    l2_reg = make_l2_reg_bu(Q, M)
+    return make_spark_mr_obj_func(X, lr_row_loss, l2_reg)
+
+
+def make_spark_lr_l2_gradient_bu(Q, M, X):
+    l2_reg = make_l2_reg_gradient_bu(Q, M)
+    return make_spark_mr_gradient(X, lr_row_gradient, l2_reg)
 
 
 # def calc_gradient_rosen(X1, w, l2_r):
