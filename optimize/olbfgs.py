@@ -221,6 +221,71 @@ def lr_row_hess_diag(w, x, y):
     return (x * D_i).multiply(x)
 
 
+def sparse_min_max(sparse_matrix, lb, ub):
+    sparse_matrix = sparse_matrix.tocsc()
+    indices = sparse_matrix.indices
+    indptr = sparse_matrix.indptr
+    data = np.array([max(float(lb), min(float(ub), f))
+                     for f
+                     in sparse_matrix.data])
+    return sp.sparse.csc_matrix(
+        (data, indices, indptr),
+        shape=sparse_matrix.shape,
+        dtype=np.float)
+
+
+def sparse_logistic_function(sparse_vector):
+    dense_array = sparse_vector.T.toarray()[0]
+    len_dense_array = len(dense_array)
+    indices = np.array(xrange(0, len_dense_array))
+    indptr = np.array([0, len_dense_array])
+    data = np.array([logistic_function(f)
+                     for f
+                     in dense_array])
+
+    return sp.sparse.csc_matrix(
+        (data, indices, indptr),
+        shape=(len_dense_array, 1),
+        dtype=np.float)
+
+
+def make_i(sparse_matrix):
+    sparse_matrix = sparse_matrix.tocsc()
+    indices = sparse_matrix.indices
+    indptr = sparse_matrix.indptr
+    data = np.ones(indices.size)
+    return sp.sparse.csc_matrix(
+        (data, indices, indptr),
+        shape=sparse_matrix.shape,
+        dtype=np.float)
+
+
+def s_lr_row_loss(w, x, y):
+    f = w.T.dot(x)
+    f_clipped = f_clipped = sparse_min_max(f, -20., 20.)
+    y_scaled = (2. * y) + (-1. * make_i(y))  # Target scaled to {-1, 1} for logistic loss
+    _logistic = sparse_logistic_function(y_scaled.multiply(f_clipped))
+    _logistic.data = -np.log(_logistic.data)
+    return _logistic
+
+
+def s_lr_row_gradient(w, x, y):
+    f = w.T.dot(x)
+    f_clipped = sparse_min_max(f, -20., 20.)
+    y_scaled = (2. * y) + (-1. * make_i(y))  # Target scaled to {-1, 1} for logistic loss
+    phi = sparse_logistic_function(y_scaled.multiply(f_clipped))
+    return x.dot(((phi + (-1. * make_i(phi))).multiply(y_scaled)).T)
+
+
+# def s_lr_row_hess_diag(w, x, y):
+#     f = w.T.dot(x)[0, 0]
+#     f_clipped = max(-20., min(20., f))
+#     y_scaled = 2. * y - 1.  # Target scaled to {-1, 1} for logistic loss
+#     phi_y_w_T_x = logistic_function(y_scaled * f_clipped)
+#     D_i = phi_y_w_T_x * (1. - phi_y_w_T_x)
+#     return (x * D_i).multiply(x)
+
+
 def logistic_function(t):
     if t > 0:
         return 1. / (1. + np.exp(-t))
@@ -342,9 +407,19 @@ def make_lr_l2_obj_func(X, l2_r=None):
     return make_mr_obj_func(X, lr_row_loss, l2_reg)
 
 
+def make_s_lr_l2_obj_func(X, l2_r=None):
+    l2_reg = make_l2_reg(l2_r)
+    return make_mr_obj_func(X, s_lr_row_loss, l2_reg)
+
+
 def make_lr_l2_gradient(X, l2_r=None):
     l2_reg = make_l2_reg_gradient(l2_r)
     return make_mr_gradient(X, lr_row_gradient, l2_reg)
+
+
+def make_s_lr_l2_gradient(X, l2_r=None):
+    l2_reg = make_l2_reg_gradient(l2_r)
+    return make_mr_gradient(X, s_lr_row_gradient, l2_reg)
 
 
 def make_spark_lr_l2_obj_func(X, l2_r=None):
@@ -355,6 +430,16 @@ def make_spark_lr_l2_obj_func(X, l2_r=None):
 def make_spark_lr_l2_gradient(X, l2_r=None):
     l2_reg = make_l2_reg_gradient(l2_r)
     return make_spark_mr_gradient(X, lr_row_gradient, l2_reg)
+
+
+def make_spark_s_lr_l2_obj_func(X, l2_r=None):
+    l2_reg = make_l2_reg(l2_r)
+    return make_spark_mr_obj_func(X, s_lr_row_loss, l2_reg)
+
+
+def make_spark_s_lr_l2_gradient(X, l2_r=None):
+    l2_reg = make_l2_reg_gradient(l2_r)
+    return make_spark_mr_gradient(X, s_lr_row_gradient, l2_reg)
 
 
 def make_spark_lr_l2_hessian_diag(X, l2_r=None):
@@ -402,6 +487,17 @@ def make_spark_lr_l2_obj_func_bu(Q, M, X):
 def make_spark_lr_l2_gradient_bu(Q, M, X):
     l2_reg = make_l2_reg_gradient_bu(Q, M)
     return make_spark_mr_gradient(X, lr_row_gradient, l2_reg)
+
+
+def make_spark_s_lr_l2_obj_func_bu(Q, M, X):
+    l2_reg = make_l2_reg_bu(Q, M)
+    return make_spark_mr_obj_func(X, s_lr_row_loss, l2_reg)
+
+
+def make_spark_s_lr_l2_gradient_bu(Q, M, X):
+    l2_reg = make_l2_reg_gradient_bu(Q, M)
+    return make_spark_mr_gradient(X, s_lr_row_gradient, l2_reg)
+
 
 
 # def calc_gradient_rosen(X1, w, l2_r):

@@ -41,7 +41,8 @@ class HashFeatureManager(FeatureManager):
         self.single_features = []
         self.quad_features = []
         self.quads = []
-        self.label = ''
+        # self.label = ''
+        self.labels = []
         self.all_features = []
         self.hash_functions = {}
 
@@ -69,8 +70,8 @@ class HashFeatureManager(FeatureManager):
         self.k = new_k
         return self
 
-    def set_label(self, new_label):
-        self.label = new_label
+    def set_labels(self, new_labels):
+        self.labels = new_labels
         return self
 
     def set_single_features(self, new_sf):
@@ -140,7 +141,7 @@ class HashFeatureManager(FeatureManager):
         Prints returns a hashed, readable form of a feature vector in the
         format:
 
-        {'target': , 'date': }\t{feature_1: , feature_2: }
+        {'targets': , 'date': }\t{feature_1: , feature_2: }
         """
         def print_dict(d):
             return json.dumps(dict(filter(
@@ -157,7 +158,7 @@ class HashFeatureManager(FeatureManager):
             'intercept': 0,
             })
         left_dict = {
-            'target': int(row.get(self.label, 0)),
+            'targets': [float(row.get(l, 0.)) for l in self.labels],
             'date': row.get('date')
         }
         return '%s\t%s' % (print_dict(left_dict),
@@ -182,15 +183,22 @@ class HashFeatureManager(FeatureManager):
         return dict([(0, "intercept")] + filter(lambda y: y is not None, x))
 
     def parse_row(self, row):
-        y = float(row.get(self.label, 0.))
-        features = dict(filter(lambda x: x[0] != self.label, row.items()))
+        num_targets = len(self.labels)
+        y = sp.sparse.csc_matrix(
+            (
+                np.array([float(row.get(l, 0.)) for l in self.labels]),
+                (np.array(range(num_targets)), np.zeros(num_targets))
+            ),
+            shape=(num_targets, 1),
+            dtype=np.float)
+        features = dict(filter(lambda x: x[0] not in self.labels, row.items()))
         x = self.get_features_sparse(features)
         results = (y, x)
         return results
 
     def get_w(self):
         return sp.sparse.csc_matrix(
-            (1 << self.k, 1),
+            (1 << self.k, len(self.labels)),
             dtype=np.float)
 
     def map_feature_hash_to_names(self, samples, feat_hash={}):
