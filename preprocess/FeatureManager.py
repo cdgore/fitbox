@@ -41,9 +41,10 @@ class HashFeatureManager(FeatureManager):
         self.single_features = []
         self.quad_features = []
         self.quads = []
-        # self.label = ''
-        self.labels = []
         self.all_features = []
+        self.labels = []
+        self.numeric_labels = []
+        self.name = None
         self.hash_functions = {}
 
     def __key(self):
@@ -55,8 +56,7 @@ class HashFeatureManager(FeatureManager):
                 self.quad_features,
                 self.quads,
                 self.label,
-                self.all_features
-
+                self.all_features,
             ])
         )
 
@@ -66,12 +66,34 @@ class HashFeatureManager(FeatureManager):
     def __hash__(self):
         return mmh3.hash(self.__key(), 5)
 
+    def __str__(self):
+        return json.dumps({
+            'k': self.k,
+            'labels': self.labels,
+            'numeric_labels': self.numeric_labels,
+            'single_features': self.single_features,
+            'quadratic_features': self.quads,
+            'hash_key': self.name if self.name is not None else hash(self),
+            })
+
     def set_k(self, new_k):
         self.k = new_k
         return self
 
     def set_labels(self, new_labels):
+        if len(self.numeric_labels) > 0 \
+                and len(self.numeric_labels) != len(new_labels):
+                raise ValueError(
+                    'labels must be the same length as numeric_labels')
         self.labels = new_labels
+        return self
+
+    def set_numeric_labels(self, new_numeric_labels):
+        if len(self.labels) > 0 \
+                and len(self.labels) != len(new_numeric_labels):
+                raise ValueError(
+                    'labels must be the same length as numeric_labels')
+        self.labels = new_numeric_labels
         return self
 
     def set_single_features(self, new_sf):
@@ -94,6 +116,9 @@ class HashFeatureManager(FeatureManager):
                 lambda f: (f, self.hash_factory(f)),
                 self.all_features))
         return self
+
+    def set_name(self, name):
+        self.name = name
 
     def hash_factory(self, key):
         trunc_bytes = (1 << self.k) + (~1 + 1)
@@ -200,6 +225,21 @@ class HashFeatureManager(FeatureManager):
         return sp.sparse.csc_matrix(
             (1 << self.k, len(self.labels)),
             dtype=np.float)
+
+    def model_to_json(self, model):
+        ''' Converts model parameters from csc to a json string
+        param model: scipy.sparse.csc_matrix
+
+        returns str: parameters in json format
+        '''
+
+        return json.dumps({
+            'shape': [2 ** self.k, len(self.labels)],
+            'name': hash(self),
+            'indices': model.indices,
+            'indptr': model.indptr,
+            'data': model.data,
+            })
 
     def map_feature_hash_to_names(self, samples, feat_hash={}):
         for t, row in enumerate(samples):
