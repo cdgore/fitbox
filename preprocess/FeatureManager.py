@@ -203,7 +203,7 @@ class HashFeatureManager(FeatureManager):
             self.quads,
             lambda a, b: (str(a) + "_" + str(b), str(row.get(a, '')) + "_" + str(row.get(b, ''))))
         x = map(
-            lambda (k, v): (self.hash_functions.get(k, lambda a: None)(v), str(k) + "_" + str(v)),
+            lambda (k, v): (self.hash_functions.get(str(k), lambda a: None)(v), str(k) + "_" + str(v)),
             quad_transformed_items)
         return dict([(0, "intercept")] + filter(lambda y: y is not None, x))
 
@@ -258,8 +258,11 @@ class HashFeatureManager(FeatureManager):
             return feat_hash
 
         def comb_op(feat_hash1, feat_hash2):
-            for i in feat_hash2.items():
-                feat_hash1.update(dict(i))
+            for k, v in feat_hash2.items():
+                try:
+                    feat_hash1.update({k: v})
+                except:
+                    pass
             return feat_hash1
 
         return samples.aggregate(
