@@ -221,60 +221,65 @@ def lr_row_hess_diag(w, x, y):
     return (x * D_i).multiply(x)
 
 
-def sparse_min_max(sparse_matrix, lb, ub):
-    sparse_matrix = sparse_matrix.tocsc()
-    indices = sparse_matrix.indices
-    indptr = sparse_matrix.indptr
-    data = np.array([max(float(lb), min(float(ub), f))
-                     for f
-                     in sparse_matrix.data])
-    return sp.sparse.csc_matrix(
-        (data, indices, indptr),
-        shape=sparse_matrix.shape,
-        dtype=np.float)
+# def sparse_min_max(sparse_tensor, lb, ub):
+#     sparse_tensor_tmp = sparse_tensor.tocsc().copy()
+#     sparse_tensor_tmp.data = np.array([
+#             max(float(lb), min(float(ub), f))
+#             for f
+#             in sparse_tensor_tmp.data])
+#     return sparse_tensor_tmp
 
 
-def sparse_logistic_function(sparse_vector):
-    dense_array = sparse_vector.T.toarray()[0]
-    len_dense_array = len(dense_array)
-    indices = np.array(xrange(0, len_dense_array))
-    indptr = np.array([0, len_dense_array])
-    data = np.array([logistic_function(f)
-                     for f
-                     in dense_array])
-
-    return sp.sparse.csc_matrix(
-        (data, indices, indptr),
-        shape=(len_dense_array, 1),
-        dtype=np.float)
+# def sparse_logistic_function(sparse_tensor):
+#     sparse_tensor_tmp = sparse_tensor.tocsc().copy()
+#     sparse_tensor_tmp.data = np.array([
+#             logistic_function(f)
+#             for f
+#             in sparse_tensor_tmp.data])
+#     return sparse_tensor_tmp
 
 
-def make_i(sparse_matrix):
-    sparse_matrix = sparse_matrix.tocsc()
-    indices = sparse_matrix.indices
-    indptr = sparse_matrix.indptr
-    data = np.ones(indices.size)
-    return sp.sparse.csc_matrix(
-        (data, indices, indptr),
-        shape=sparse_matrix.shape,
-        dtype=np.float)
+def apply_sparse(sparse_tensor, func):
+    sparse_tensor_tmp = sparse_tensor.tocsc().copy()
+    sparse_tensor_tmp.data = np.array([
+            func(_)
+            for _ in sparse_tensor_tmp.data])
+    return sparse_tensor_tmp
+
+
+# def make_i(sparse_matrix):
+#     sparse_matrix = sparse_matrix.tocsc()
+#     indices = sparse_matrix.indices
+#     indptr = sparse_matrix.indptr
+#     data = np.ones(indices.size)
+#     return sp.sparse.csc_matrix(
+#         (data, indices, indptr),
+#         shape=sparse_matrix.shape,
+#         dtype=np.float)
 
 
 def s_lr_row_loss(w, x, y):
     f = w.T.dot(x)
-    f_clipped = f_clipped = sparse_min_max(f, -20., 20.)
-    y_scaled = (2. * y) + (-1. * make_i(y))  # Target scaled to {-1, 1} for logistic loss
-    _logistic = sparse_logistic_function(y_scaled.multiply(f_clipped))
+    f_clipped = apply_sparse(f, lambda a: max(-20., min(20., a)))
+    # Target scaled to {-1, 1} for logistic loss
+    y_scaled = sparse.csc_matrix((2. * y.todense()) - 1.)
+    _logistic = apply_sparse(
+        y_scaled.multiply(f_clipped),
+        lambda a: logistic_function(a))
     _logistic.data = -np.log(_logistic.data)
     return _logistic
 
 
 def s_lr_row_gradient(w, x, y):
     f = w.T.dot(x)
-    f_clipped = sparse_min_max(f, -20., 20.)
-    y_scaled = (2. * y) + (-1. * make_i(y))  # Target scaled to {-1, 1} for logistic loss
-    phi = sparse_logistic_function(y_scaled.multiply(f_clipped))
-    return x.dot(((phi + (-1. * make_i(phi))).multiply(y_scaled)).T)
+    f_clipped = apply_sparse(f, lambda x: max(-20., min(20., x)))
+    # Target scaled to {-1, 1} for logistic loss
+    y_scaled = sparse.csc_matrix((2. * y.todense()) - 1.)
+    phi_minus_1 = apply_sparse(
+        y_scaled.multiply(f_clipped),
+        lambda a: logistic_function(a) - 1.)
+    return x.dot(phi_minus_1.multiply(y_scaled).T)
+
 
 
 # def s_lr_row_hess_diag(w, x, y):
