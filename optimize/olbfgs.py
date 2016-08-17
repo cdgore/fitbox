@@ -192,8 +192,7 @@ def sgd_with_momentum(w, obj_func_grad, eta, rho, max_num_iter=10,
         param_delta = rho * previous_param_delta - eta * grad
         w = w + param_delta
         previous_param_delta = param_delta
-        # norm_2_grad = grad.T.dot(grad)[0, 0]
-        norm_2_grad = np.mean(grad.T.dot(grad).data)
+        norm_2_grad = sparse.linalg.norm(grad)
         print "Norm2(gradient): %f" % (norm_2_grad)
         num_iter += 1
     return (w, previous_param_delta)
