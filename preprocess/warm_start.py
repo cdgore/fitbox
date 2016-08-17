@@ -14,6 +14,7 @@ def set_first_intercept(w, X1):
 
 
 def set_first_intercept_spark(w, X1):
+    tmp_w = w.copy()
     ctr_counts = X1.map(
         lambda x: (x[0], 1),
         preservesPartitioning=True
@@ -31,5 +32,5 @@ def set_first_intercept_spark(w, X1):
         ((_ + 10**-6) ** -1) - 1.
         for _ in ctr_ratio.data])
     new_intercept = ctr_ratio
-    w[0] = new_intercept.T
-    return w
+    tmp_w[0] = new_intercept.T
+    return tmp_w

@@ -253,7 +253,7 @@ class HashFeatureManager(FeatureManager):
 
     def map_feature_hash_to_names_spark(self, samples, feat_hash={}):
         def seq_op(feat_hash, row):
-            features = dict(filter(lambda x: x[0] != self.label, row.items()))
+            features = dict(filter(lambda x: x[0] not in self.labels, row.items()))
             feat_hash.update(self.update_feature_hash_mapping(features, feat_hash))
             return feat_hash
 
