@@ -198,21 +198,27 @@ def sgd_with_momentum(w, obj_func_grad, eta, rho, max_num_iter=10,
     return (w, previous_param_delta)
 
 
-def lr_row_loss(w, x, y):
+def lr_row_loss(w, x, y, spark_broadcast=False):
+    if spark_broadcast:
+        w = w.value
     f = w.T.dot(x)[0, 0]
     f_clipped = max(-20., min(20., f))
     y_scaled = 2. * y - 1.  # Target scaled to {-1, 1} for logistic loss
     return -np.log(logistic_function(y_scaled * f_clipped))
 
 
-def lr_row_gradient(w, x, y):
+def lr_row_gradient(w, x, y, spark_broadcast=False):
+    if spark_broadcast:
+        w = w.value
     f = w.T.dot(x)[0, 0]
     f_clipped = max(-20., min(20., f))
     y_scaled = 2. * y - 1.  # Target scaled to {-1, 1} for logistic loss
     return y_scaled * x * (logistic_function(y_scaled * f_clipped) - 1.)
 
 
-def lr_row_hess_diag(w, x, y):
+def lr_row_hess_diag(w, x, y, spark_broadcast=False):
+    if spark_broadcast:
+        w = w.value
     f = w.T.dot(x)[0, 0]
     f_clipped = max(-20., min(20., f))
     y_scaled = 2. * y - 1.  # Target scaled to {-1, 1} for logistic loss
@@ -258,7 +264,9 @@ def apply_sparse(sparse_tensor, func):
 #         dtype=np.float)
 
 
-def s_lr_row_loss(w, x, y):
+def s_lr_row_loss(w, x, y, spark_broadcast=False):
+    if spark_broadcast:
+        w = w.value
     f = w.T.dot(x)
     f_clipped = apply_sparse(f, lambda a: max(-20., min(20., a)))
     # Target scaled to {-1, 1} for logistic loss
@@ -270,7 +278,9 @@ def s_lr_row_loss(w, x, y):
     return _logistic
 
 
-def s_lr_row_gradient(w, x, y):
+def s_lr_row_gradient(w, x, y, spark_broadcast=False):
+    if spark_broadcast:
+        w = w.value
     f = w.T.dot(x)
     f_clipped = apply_sparse(f, lambda x: max(-20., min(20., x)))
     # Target scaled to {-1, 1} for logistic loss
@@ -334,7 +344,8 @@ def make_mr_gradient(X1, row_gradient, reg_modifier=None):
     return partial_mr_gradient
 
 
-def make_spark_mr_function(X, row_function, zero_val_func, reg_modifier=None):
+def make_spark_mr_function(X, row_function, zero_val_func, reg_modifier=None,
+                           spark_broadcast=False, sc=None):
     if reg_modifier is None:
         reg_modifier = lambda a, b: a
     X_len = X.count()
@@ -342,8 +353,11 @@ def make_spark_mr_function(X, row_function, zero_val_func, reg_modifier=None):
     def mr_function(w):
         zero_value = zero_val_func(w)
         # X.checkpoint()
+        w_broadcast = w
+        if spark_broadcast and sc is not None:
+            w_broadcast = sc.broadcast(w)
         function_result = X.map(
-            lambda row: row_function(w, row[1], row[0]),
+            lambda row: row_function(w_broadcast, row[1], row[0], spark_broadcast),
             preservesPartitioning=True
         ).fold(
             zero_value,
@@ -353,14 +367,18 @@ def make_spark_mr_function(X, row_function, zero_val_func, reg_modifier=None):
     return mr_function
 
 
-def make_spark_mr_obj_func(X, row_obj_func, reg_modifier=None):
+def make_spark_mr_obj_func(X, row_obj_func, reg_modifier=None,
+                           spark_broadcast=False, sc=None):
     zero_val_func = lambda w: 0.
-    return make_spark_mr_function(X, row_obj_func, zero_val_func, reg_modifier)
+    return make_spark_mr_function(X, row_obj_func, zero_val_func, reg_modifier,
+                                  spark_broadcast, sc)
 
 
-def make_spark_mr_gradient(X, row_gradient, reg_modifier=None):
+def make_spark_mr_gradient(X, row_gradient, reg_modifier=None,
+                           spark_broadcast=False, sc=None):
     zero_val_func = lambda w: sparse.csc_matrix(w.shape, dtype=np.float)
-    return make_spark_mr_function(X, row_gradient, zero_val_func, reg_modifier)
+    return make_spark_mr_function(X, row_gradient, zero_val_func, reg_modifier,
+                                  spark_broadcast, sc)
 
 
 def make_l2_reg(l2_r=None, intercept_index=0):
@@ -431,27 +449,27 @@ def make_s_lr_l2_gradient(X, l2_r=None):
     return make_mr_gradient(X, s_lr_row_gradient, l2_reg)
 
 
-def make_spark_lr_l2_obj_func(X, l2_r=None):
+def make_spark_lr_l2_obj_func(X, l2_r=None, spark_broadcast=False, sc=None):
     l2_reg = make_l2_reg(l2_r)
     return make_spark_mr_obj_func(X, lr_row_loss, l2_reg)
 
 
-def make_spark_lr_l2_gradient(X, l2_r=None):
+def make_spark_lr_l2_gradient(X, l2_r=None, spark_broadcast=False, sc=None):
     l2_reg = make_l2_reg_gradient(l2_r)
     return make_spark_mr_gradient(X, lr_row_gradient, l2_reg)
 
 
-def make_spark_s_lr_l2_obj_func(X, l2_r=None):
+def make_spark_s_lr_l2_obj_func(X, l2_r=None, spark_broadcast=False, sc=None):
     l2_reg = make_l2_reg(l2_r)
     return make_spark_mr_obj_func(X, s_lr_row_loss, l2_reg)
 
 
-def make_spark_s_lr_l2_gradient(X, l2_r=None):
+def make_spark_s_lr_l2_gradient(X, l2_r=None, spark_broadcast=False, sc=None):
     l2_reg = make_l2_reg_gradient(l2_r)
     return make_spark_mr_gradient(X, s_lr_row_gradient, l2_reg)
 
 
-def make_spark_lr_l2_hessian_diag(X, l2_r=None):
+def make_spark_lr_l2_hessian_diag(X, l2_r=None, spark_broadcast=False, sc=None):
     l2_reg = make_l2_reg_hessian_diag(l2_r)
     return make_spark_mr_gradient(X, lr_row_hess_diag, l2_reg)
 
