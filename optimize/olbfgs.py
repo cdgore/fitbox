@@ -370,8 +370,8 @@ def make_l2_reg(l2_r=None, intercept_index=0):
     def partial_reg(loss_func, w):
         w_reg = w.copy()  # only add regularization penalty on non-intercept weights
         if intercept_index is not None:
-            w_reg[intercept_index, 0] = 0.0
-        return loss_func + 0.5 * l2_r * (w_reg.T.dot(w_reg)[0, 0])
+            w_reg[intercept_index] = 0.0
+        return loss_func + 0.5 * l2_r * sum(w_reg.T.dot(w_reg).data)
     return partial_reg
 
 
@@ -382,7 +382,7 @@ def make_l2_reg_gradient(l2_r=None, intercept_index=0):
     def partial_reg(grad, w):
         w_reg = w.copy()  # only add regularization penalty on non-intercept weights
         if intercept_index is not None:
-            w_reg[intercept_index, 0] = 0.0
+            w_reg[intercept_index] = 0.0
         return grad + l2_r * w_reg
     return partial_reg
 
