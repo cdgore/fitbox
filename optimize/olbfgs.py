@@ -371,7 +371,11 @@ def make_l2_reg(l2_r=None, intercept_index=0):
         w_reg = w.copy()  # only add regularization penalty on non-intercept weights
         if intercept_index is not None:
             w_reg[intercept_index] = 0.0
-        return loss_func + 0.5 * l2_r * sum(w_reg.T.dot(w_reg).data)
+
+        norm_2_squared_w = sparse.linalg.norm(w_reg) ** 2
+
+        return sparse.csc_matrix(
+            loss_func.todense() + 0.5 * l2_r * norm_2_squared_w)
     return partial_reg
 
 
