@@ -55,7 +55,7 @@ class HashFeatureManager(FeatureManager):
                 self.single_features,
                 self.quad_features,
                 self.quads,
-                self.label,
+                self.labels,
                 self.all_features,
             ])
         )
