@@ -344,11 +344,33 @@ def make_mr_gradient(X1, row_gradient, reg_modifier=None):
     return partial_mr_gradient
 
 
+def feature_count_mapper(row):
+    tmp_row = row[1].copy()
+    tmp_row.data = np.ones(len(tmp_row.data))
+    return tmp_row
+
+
+def feature_count_normalizer(mr_result, counter_result):
+    _counter = counter_result.copy().T
+    _counter.data = [x**-1 for x in _counter.data]
+
+    counter_I = sparse.dia_matrix((_counter.toarray()[0], np.array([0])),
+                                  shape=(_counter.shape[1], _counter.shape[1]))
+
+    return (mr_result.T.dot(counter_I)).T
+
+
 def make_spark_mr_function(X, row_function, zero_val_func, reg_modifier=None,
+                           count_mapper=None, count_normalizer=None,
                            spark_broadcast=False, sc=None):
     if reg_modifier is None:
         reg_modifier = lambda a, b: a
-    X_len = X.count()
+    if count_mapper is None:
+        count_mapper = lambda a: 1
+    if count_normalizer is None:
+        count_normalizer = lambda a, b: a / b
+    X_len = X.map(count_mapper).reduce(lambda x, y: x + y)
+    # X_len = X.count()
 
     def mr_function(w):
         zero_value = zero_val_func(w)
@@ -362,23 +384,91 @@ def make_spark_mr_function(X, row_function, zero_val_func, reg_modifier=None,
         ).fold(
             zero_value,
             lambda a, b: a + b
-        ) / float(X_len)
-        return reg_modifier(function_result, w)
+        )
+        function_result_normalized = count_normalizer(function_result, X_len)
+        return reg_modifier(function_result_normalized, w)
+    return mr_function
+
+
+def make_spark_mr_function_map_collect(X, row_function, zero_val_func,
+                                       reg_modifier=None, count_mapper=None,
+                                       count_normalizer=None,
+                                       spark_broadcast=False, sc=None):
+    if reg_modifier is None:
+        reg_modifier = lambda a, b: a
+    if count_mapper is None:
+        count_mapper = lambda x: 1
+    if count_normalizer is None:
+        count_normalizer = lambda a, b: a / b
+    X_len = X.map(count_mapper).reduce(lambda x, y: x + y)
+    # X_len = X.count()
+
+    def spark_accum(rows, zero_val, w):
+        acc = zero_val.value
+        for r in rows:
+            acc = acc + row_function(w, r[1], r[0], spark_broadcast)
+        return [acc]
+
+    def local_reduce(rows, zero_val):
+        acc = zero_val
+        mod_val = int(len(rows) / 10)
+        for i, r in enumerate(rows):
+            if i % mod_val == 0:
+                print 'Collecting partition: %d/%d' % (i, len(rows))
+            acc = acc + r
+        return acc
+
+    def mr_function(w):
+        zero_value = zero_val_func(w)
+        # X.checkpoint()
+        w_broadcast = w
+        if spark_broadcast and sc is not None:
+            w_broadcast = sc.broadcast(w)
+        zero_val_broadcast = sc.broadcast(zero_value)
+
+        mapped_partitions = X \
+            .mapPartitions(lambda x: spark_accum(
+                x,
+                zero_val_broadcast,
+                w_broadcast),
+                preservesPartitioning=True) \
+            .collect()
+        function_result = local_reduce(
+            mapped_partitions,
+            zero_value)
+        function_result_normalized = count_normalizer(function_result, X_len)
+        return reg_modifier(function_result_normalized, w)
     return mr_function
 
 
 def make_spark_mr_obj_func(X, row_obj_func, reg_modifier=None,
+                           count_mapper=None, count_normalizer=None,
                            spark_broadcast=False, sc=None):
     zero_val_func = lambda w: 0.
-    return make_spark_mr_function(X, row_obj_func, zero_val_func, reg_modifier,
-                                  spark_broadcast, sc)
+    return make_spark_mr_function_map_collect(
+        X,
+        row_obj_func,
+        zero_val_func,
+        reg_modifier=reg_modifier,
+        count_mapper=count_mapper,
+        count_normalizer=count_normalizer,
+        spark_broadcast=spark_broadcast,
+        sc=sc)
 
 
 def make_spark_mr_gradient(X, row_gradient, reg_modifier=None,
+                           count_mapper=None, count_normalizer=None,
                            spark_broadcast=False, sc=None):
     zero_val_func = lambda w: sparse.csc_matrix(w.shape, dtype=np.float)
-    return make_spark_mr_function(X, row_gradient, zero_val_func, reg_modifier,
-                                  spark_broadcast, sc)
+    return make_spark_mr_function_map_collect(
+        X,
+        row_gradient,
+        zero_val_func,
+        reg_modifier=reg_modifier,
+        count_mapper=count_mapper,
+        count_normalizer=count_normalizer,
+        spark_broadcast=spark_broadcast,
+        sc=sc)
 
 
 def make_l2_reg(l2_r=None, intercept_index=0):
@@ -451,27 +541,64 @@ def make_s_lr_l2_gradient(X, l2_r=None):
 
 def make_spark_lr_l2_obj_func(X, l2_r=None, spark_broadcast=False, sc=None):
     l2_reg = make_l2_reg(l2_r)
-    return make_spark_mr_obj_func(X, lr_row_loss, l2_reg)
+    return make_spark_mr_obj_func(
+        X,
+        lr_row_loss,
+        reg_modifier=l2_reg,
+        count_mapper=None,
+        count_normalizer=None,
+        spark_broadcast=spark_broadcast,
+        sc=sc)
 
 
 def make_spark_lr_l2_gradient(X, l2_r=None, spark_broadcast=False, sc=None):
     l2_reg = make_l2_reg_gradient(l2_r)
-    return make_spark_mr_gradient(X, lr_row_gradient, l2_reg)
+    return make_spark_mr_gradient(
+        X,
+        lr_row_gradient,
+        reg_modifier=l2_reg,
+        count_mapper=feature_count_mapper,
+        count_normalizer=feature_count_normalizer,
+        spark_broadcast=spark_broadcast,
+        sc=sc)
 
 
 def make_spark_s_lr_l2_obj_func(X, l2_r=None, spark_broadcast=False, sc=None):
     l2_reg = make_l2_reg(l2_r)
-    return make_spark_mr_obj_func(X, s_lr_row_loss, l2_reg)
+    return make_spark_mr_obj_func(
+        X,
+        s_lr_row_loss,
+        reg_modifier=l2_reg,
+        count_mapper=None,
+        count_normalizer=None,
+        spark_broadcast=spark_broadcast,
+        sc=sc)
 
 
 def make_spark_s_lr_l2_gradient(X, l2_r=None, spark_broadcast=False, sc=None):
     l2_reg = make_l2_reg_gradient(l2_r)
-    return make_spark_mr_gradient(X, s_lr_row_gradient, l2_reg)
+    return make_spark_mr_gradient(
+        X,
+        s_lr_row_gradient,
+        reg_modifier=l2_reg,
+        # count_mapper=feature_count_mapper,
+        count_mapper=None,
+        # count_normalizer=feature_count_normalizer,
+        count_normalizer=None,
+        spark_broadcast=spark_broadcast,
+        sc=sc)
 
 
 def make_spark_lr_l2_hessian_diag(X, l2_r=None, spark_broadcast=False, sc=None):
     l2_reg = make_l2_reg_hessian_diag(l2_r)
-    return make_spark_mr_gradient(X, lr_row_hess_diag, l2_reg)
+    return make_spark_mr_gradient(
+        X,
+        lr_row_hess_diag,
+        reg_modifier=l2_reg,
+        count_mapper=feature_count_mapper,
+        count_normalizer=feature_count_normalizer,
+        spark_broadcast=spark_broadcast,
+        sc=sc)
 
 
 # ========================= Batch updates ============================
