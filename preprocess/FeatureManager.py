@@ -93,7 +93,7 @@ class HashFeatureManager(FeatureManager):
                 and len(self.labels) != len(new_numeric_labels):
                 raise ValueError(
                     'labels must be the same length as numeric_labels')
-        self.labels = new_numeric_labels
+        self.numeric_labels = new_numeric_labels
         return self
 
     def set_single_features(self, new_sf):
