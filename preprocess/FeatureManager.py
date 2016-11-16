@@ -44,6 +44,7 @@ class HashFeatureManager(FeatureManager):
         self.all_features = []
         self.labels = []
         self.numeric_labels = []
+        self.numeric_label = ''
         self.name = None
         self.hash_functions = {}
 
@@ -71,6 +72,7 @@ class HashFeatureManager(FeatureManager):
             'k': self.k,
             'labels': self.labels,
             'numeric_labels': self.numeric_labels,
+            'numeric_label': self.numeric_label,
             'single_features': self.single_features,
             'quadratic_features': self.quads,
             'hash_key': self.name if self.name is not None else hash(self),
@@ -94,6 +96,10 @@ class HashFeatureManager(FeatureManager):
                 raise ValueError(
                     'labels must be the same length as numeric_labels')
         self.numeric_labels = new_numeric_labels
+        return self
+
+    def set_numeric_label(self, new_numeric_label):
+        self.numeric_label = new_numeric_label
         return self
 
     def set_single_features(self, new_sf):
