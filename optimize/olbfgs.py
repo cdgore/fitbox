@@ -681,8 +681,10 @@ def make_spark_s_lr_l2_hessian_diag(X, l2_r=None, spark_broadcast=False, sc=None
         X,
         s_lr_row_hess_diag,
         reg_modifier=l2_reg,
-        count_mapper=feature_count_mapper,
-        count_normalizer=feature_count_normalizer,
+        # count_mapper=feature_count_mapper,
+        count_mapper=None,
+        # count_normalizer=feature_count_normalizer,
+        count_normalizer=None,
         spark_broadcast=spark_broadcast,
         sc=sc)
 
@@ -695,7 +697,7 @@ def make_l2_reg_bu(Q, M, intercept_index=0):
     def partial_reg(loss_func, w):
         w_reg = w.copy() - M  # only add regularization penalty on non-intercept weights
         if intercept_index is not None:
-            w_reg[intercept_index, 0] = 0.0
+            w_reg[intercept_index] = 0.0
         return loss_func + 0.5 * (Q.T.dot(w_reg.multiply(w_reg))[0, 0])
     return partial_reg
 
@@ -709,9 +711,17 @@ def make_l2_reg_gradient_bu(Q, M, intercept_index=0):
     def partial_reg(grad, w):
         w_reg = w.copy() - M  # only add regularization penalty on non-intercept weights
         if intercept_index is not None:
-            w_reg[intercept_index, 0] = 0.0
+            w_reg[intercept_index] = 0.0
         return grad + Q.multiply(w_reg)
     return partial_reg
+
+
+def make_s_lr_l2_gradient_bu(Q, M, X):
+    l2_reg = make_l2_reg_gradient_bu(Q, M)
+    return make_mr_gradient(
+        X,
+        s_lr_row_gradient,
+        l2_reg)
 
 
 def make_spark_lr_l2_hessian_diag_bu(X, l2_r=None):
