@@ -41,8 +41,11 @@ class HashFeatureManager(FeatureManager):
         self.single_features = []
         self.quad_features = []
         self.quads = []
-        self.label = ''
         self.all_features = []
+        self.labels = []
+        self.numeric_labels = []
+        self.numeric_label = ''
+        self.name = None
         self.hash_functions = {}
 
     def __key(self):
@@ -53,9 +56,8 @@ class HashFeatureManager(FeatureManager):
                 self.single_features,
                 self.quad_features,
                 self.quads,
-                self.label,
-                self.all_features
-
+                self.labels,
+                self.all_features,
             ])
         )
 
@@ -65,12 +67,39 @@ class HashFeatureManager(FeatureManager):
     def __hash__(self):
         return mmh3.hash(self.__key(), 5)
 
+    def __str__(self):
+        return json.dumps({
+            'k': self.k,
+            'labels': self.labels,
+            'numeric_labels': self.numeric_labels,
+            'numeric_label': self.numeric_label,
+            'single_features': self.single_features,
+            'quadratic_features': self.quads,
+            'hash_key': self.name if self.name is not None else hash(self),
+            })
+
     def set_k(self, new_k):
         self.k = new_k
         return self
 
-    def set_label(self, new_label):
-        self.label = new_label
+    def set_labels(self, new_labels):
+        if len(self.numeric_labels) > 0 \
+                and len(self.numeric_labels) != len(new_labels):
+                raise ValueError(
+                    'labels must be the same length as numeric_labels')
+        self.labels = new_labels
+        return self
+
+    def set_numeric_labels(self, new_numeric_labels):
+        if len(self.labels) > 0 \
+                and len(self.labels) != len(new_numeric_labels):
+                raise ValueError(
+                    'labels must be the same length as numeric_labels')
+        self.numeric_labels = new_numeric_labels
+        return self
+
+    def set_numeric_label(self, new_numeric_label):
+        self.numeric_label = new_numeric_label
         return self
 
     def set_single_features(self, new_sf):
@@ -93,6 +122,9 @@ class HashFeatureManager(FeatureManager):
                 lambda f: (f, self.hash_factory(f)),
                 self.all_features))
         return self
+
+    def set_name(self, name):
+        self.name = name
 
     def hash_factory(self, key):
         trunc_bytes = (1 << self.k) + (~1 + 1)
@@ -140,7 +172,7 @@ class HashFeatureManager(FeatureManager):
         Prints returns a hashed, readable form of a feature vector in the
         format:
 
-        {'target': , 'date': }\t{feature_1: , feature_2: }
+        {'targets': , 'date': }\t{feature_1: , feature_2: }
         """
         def print_dict(d):
             return json.dumps(dict(filter(
@@ -157,7 +189,7 @@ class HashFeatureManager(FeatureManager):
             'intercept': 0,
             })
         left_dict = {
-            'target': int(row.get(self.label, 0)),
+            'targets': [float(row.get(l, 0.)) for l in self.labels],
             'date': row.get('date')
         }
         return '%s\t%s' % (print_dict(left_dict),
@@ -177,21 +209,43 @@ class HashFeatureManager(FeatureManager):
             self.quads,
             lambda a, b: (str(a) + "_" + str(b), str(row.get(a, '')) + "_" + str(row.get(b, ''))))
         x = map(
-            lambda (k, v): (self.hash_functions.get(k, lambda a: None)(v), str(k) + "_" + str(v)),
+            lambda (k, v): (self.hash_functions.get(str(k), lambda a: None)(v), str(k) + "_" + str(v)),
             quad_transformed_items)
         return dict([(0, "intercept")] + filter(lambda y: y is not None, x))
 
     def parse_row(self, row):
-        y = float(row.get(self.label, 0.))
-        features = dict(filter(lambda x: x[0] != self.label, row.items()))
+        num_targets = len(self.labels)
+        y = sp.sparse.csc_matrix(
+            (
+                np.array([float(row.get(l, 0.)) for l in self.labels]),
+                (np.array(range(num_targets)), np.zeros(num_targets))
+            ),
+            shape=(num_targets, 1),
+            dtype=np.float)
+        features = dict(filter(lambda x: x[0] not in self.labels, row.items()))
         x = self.get_features_sparse(features)
         results = (y, x)
         return results
 
     def get_w(self):
         return sp.sparse.csc_matrix(
-            (1 << self.k, 1),
+            (1 << self.k, len(self.labels)),
             dtype=np.float)
+
+    def model_to_json(self, model):
+        ''' Converts model parameters from csc to a json string
+        param model: scipy.sparse.csc_matrix
+
+        returns str: parameters in json format
+        '''
+
+        return json.dumps({
+            'shape': [2 ** self.k, len(self.labels)],
+            'name': hash(self),
+            'indices': model.indices,
+            'indptr': model.indptr,
+            'data': model.data,
+            })
 
     def map_feature_hash_to_names(self, samples, feat_hash={}):
         for t, row in enumerate(samples):
@@ -205,13 +259,16 @@ class HashFeatureManager(FeatureManager):
 
     def map_feature_hash_to_names_spark(self, samples, feat_hash={}):
         def seq_op(feat_hash, row):
-            features = dict(filter(lambda x: x[0] != self.label, row.items()))
+            features = dict(filter(lambda x: x[0] not in self.labels, row.items()))
             feat_hash.update(self.update_feature_hash_mapping(features, feat_hash))
             return feat_hash
 
         def comb_op(feat_hash1, feat_hash2):
-            for i in feat_hash2.items():
-                feat_hash1.update(dict(i))
+            for k, v in feat_hash2.items():
+                try:
+                    feat_hash1.update({k: v})
+                except:
+                    pass
             return feat_hash1
 
         return samples.aggregate(
